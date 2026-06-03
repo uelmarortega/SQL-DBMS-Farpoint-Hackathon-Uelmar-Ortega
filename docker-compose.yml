@@ -1,0 +1,19 @@
+services:
+  app:
+    build: .
+    # Mount the source tree so edits made by Claude Code / Cursor on the host
+    # are reflected instantly in the container — no rebuild between iterations.
+    volumes:
+      - .:/app
+      # Keep the dbm database files in a named volume, NOT on the host. The
+      # files are backend- and platform-specific binaries (gdbm/ndbm/dumb), so
+      # this avoids clashes with host-created files and keeps them out of git.
+      - dbdata:/app/DB
+    stdin_open: true   # interactive REPL (docker compose run app)
+    tty: true
+    # For Challenge 2 (client/server) uncomment and pick your port:
+    # ports:
+    #   - "8000:8000"
+
+volumes:
+  dbdata:

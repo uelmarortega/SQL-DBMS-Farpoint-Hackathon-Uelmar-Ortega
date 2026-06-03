@@ -1,0 +1,232 @@
+# Database Management System: A Simple SQL Implementation Using Python
+This repository contains a simple SQL Database Management System (DBMS) implemented in Python. The primary objective of the project is to simulate basic functionalities of a SQL database like parsing SQL queries, managing schema metadata, and performing CRUD (Create, Read, Update, Delete) operations.
+
+## Features
+- ✅ SQL Query Parsing (CREATE, INSERT, SELECT, UPDATE, DELETE)
+- ✅ Schema Management with Foreign Keys
+- ✅ Full CRUD Operations with Constraint Checking
+- ✅ **Transactions** (BEGIN, COMMIT, ROLLBACK)
+- ✅ **Hash-Based Indexing** for Fast Lookups
+- ✅ **Web GUI** (phpMyAdmin-inspired interface)
+- ✅ Error Handling with Detailed Messages
+
+## 🚀 Quick Start
+
+### **1. Seed the Database (Recommended)**
+```bash
+python -m venv venv
+source venv/bin/activate
+pip install -r requirements.txt
+
+# Create complete student database with sample data and indexes
+python seeder.py
+```
+
+### **2. Start the Web GUI**
+```bash
+python gui.py
+# Open http://localhost:5001
+```
+
+### **3. Or Use CLI REPL**
+```bash
+python run.py
+# DB_2023-12345> SELECT * FROM students;
+```
+
+---
+
+## 📁 Project Structure
+```
+SQL-DBMS/
+├── seeder.py           # Database seeder (tables + data + indexes)
+├── gui.py              # Web GUI (Flask + phpMyAdmin-style UI)
+├── run.py              # CLI REPL
+├── dbms.py             # Core DBMS engine
+├── db_model.py         # Data models (Table, Record, DB)
+├── sql_transformer.py  # SQL parser transformer
+├── grammar.lark        # SQL grammar definition
+├── index_manager.py    # Hash-based indexing
+├── messages.py         # Error/success messages
+├── utils.py            # Utility functions
+├── requirements.txt    # Python dependencies
+├── README.md           # This file
+└── tests/              # 🧪 All test files and documentation
+    ├── README.md       # Test suite documentation
+    ├── seeder.py       # (symlink) Database seeder
+    ├── test_*.py       # Test scripts
+    └── *.md            # Implementation docs
+```
+
+---
+
+## 🎓 Student Database Example
+
+The seeder creates a complete **Student Record Management System** with:
+
+- **7 Tables**: departments, instructors, courses, students, enrollments, grades, attendance
+- **59 Sample Records**: 10 students, 7 courses, 12 enrollments, 12 grades, etc.
+- **19 Indexes**: Optimized for common queries (major lookup, course search, etc.)
+
+---
+
+## 🧪 Testing
+
+All test files are in the `tests/` directory:
+
+```bash
+cd tests
+
+# Run comprehensive test suite
+python test_final_comprehensive.py
+
+# Run specific tests
+python test_crud_isolated.py
+python test_transactions.py
+python test_index.py
+
+# View test documentation
+cat README.md
+```
+
+See [`tests/README.md`](tests/README.md) for complete test documentation.
+
+---
+
+## Environment
+```
+python==3.9
+lark==1.1.5
+flask==3.0.0  # For web GUI
+```
+Storage is backed by Python's built-in [`dbm`](https://docs.python.org/3/library/dbm.html) module, so there are no native libraries to install (this replaces the original BerkeleyDB backend). This is what makes the project run identically on macOS, Linux, and Windows.
+
+### Run natively
+```
+python -m venv venv
+source venv/bin/activate        # Windows: venv\Scripts\activate
+pip install -r requirements.txt
+python run.py
+```
+
+### Run in Docker (recommended for a consistent, cross-platform setup)
+The repo ships a `Dockerfile`, `docker-compose.yml`, and `Makefile` so everyone runs the same environment regardless of host OS:
+```
+make build      # build the image (once)
+make run        # start the interactive SQL REPL
+make shell      # open a shell inside the container
+make test       # pipe a few statements through the engine as a smoke test
+make reset      # wipe the database volume
+```
+VS Code / Cursor users can instead "Reopen in Container" (see `.devcontainer/`).
+
+> Note: table and column **identifiers must start with a letter and contain only letters and underscores** — names like `t2` are rejected by the grammar as a syntax error. Use `account`, `students`, etc.
+
+## Sample I/O
+
+```
+DB_2023-12345> create table account 
+(
+account_number int not null, 
+branch_name char(15)
+); 
+DB_2023-12345> 'account' table is created
+```
+```
+DB_2023-12345> drop table account;
+DB_2023-12345> 'account' table is dropped
+```
+```
+DB_2023-12345> explain account;
+-----------------------------------------------------------------
+table_name [account]
+column_name		    type		  null		key
+account_number		char(10)	N		    PRI
+branch_name		    char(15)	N		    FOR
+balance			      int		    Y  
+-----------------------------------------------------------------
+```
+```
+DB_2023-12345> show tables
+------------------------
+branch
+customer
+loan
+borrower
+account
+depositor
+------------------------
+```
+```
+DB_2023-12345> insert into account values(9732, 'Perryridge');
+DB_2023-12345> The row is inserted
+```
+```
+DB_2023-12345> delete from account where branch_name = 'Perryridge';
+DB_2023-12345> 5 row(s) are deleted
+```
+```
+DB_2023-12345> select * from account; 
++----------------+-------------+---------+ 
+| ACCOUNT_NUMBER | BRANCH_NAME | BALANCE | 
++----------------+-------------+---------+
+| A-101
+| A-102
+| A-201
+| A-215
+| A-217
+| A-222
+| A-305
++----------------+-------------+---------+
+DB_2023-12345> select customer_name, borrower.loan_number, amount from borrower, loan where borrower.loan_number = loan.loan_number and branch_name = 'Perryridge'; 
++---------------+-------------+--------+
+| CUSTOMER_NAME | LOAN_NUMBER | AMOUNT | 
++---------------+-------------+--------+
+| Adams | L-16 | 1300 | 
+| Hayes | L-15 | 1500 | 
++---------------+-------------+--------+
+```
+
+## Core Modules
+- `grammar.lark`: Defines SQL grammar in EBNF (Extended Backus-Naur Form). Using the Lark API, this file serves as the basis for parsing SQL queries into AST (Abstract Syntax Trees).
+
+- `sql_transformer.py`: Inherits from Lark's `Transformer` class to handle the AST generated by the parser. It processes and returns tables, records, and columns selected in the query.
+
+- `db_model.py`: Defines the data structures for schemas and records (each represented by `Table` and `Record` classes). It also contains a `DB` class which acts as a wrapper for manipulating `dbm` key/value stores. Metadata of schemas is stored in `MetaDB`, which inherits from the `DB` class.
+
+- `dbms.py`: Handles SQL statements such as `CREATE TABLE`, `DROP TABLE`, `EXPLAIN/DESCRIBE/DESC`, `SHOW TABLES`, `INSERT`, `DELETE`, `SELECT` through a `DBMS` class.
+
+- `messages.py`: Defines exception classes for logging and error messages that indicate whether the SQL command was executed successfully by the `DBMS` class.
+
+- `utils.py`: Defines function mappings for unknown variables and logical operations in SQL, as well as for parsed comparison/null operators. It also includes functions for validating data types, including `date` data types.
+
+- `run.py`: Splits the query sequence into multiple statements and performs actions for each query. It imports the `Lark` class from the Lark library and generates a parser based on the grammar defined in the `grammar.lark` file. It also imports `SQLTransformer` to interpret the AST generated by the parser and extract the necessary data. The corresponding handling functions for SQL statements are called from the `DBMS` instance, and the result or error message is output.
+
+
+
+## Implementation Details
+- `grammar.lark`
+  - Adds `null` data type to the `INSERT` statement to allow null values.
+- `sql_transformer.py`
+  - The transformer navigates the AST in a bottom-up manner, collecting and categorizing data into queries, tables, and record information as it traverses the nodes. The result is returned in the form of a dictionary.
+  - Input table and column names are converted to lowercase.
+  - Type casting is done for `int` values as Python's `int` and for `null` values as Python's `None`.
+  - It also handles the `where` clause in SQL by parsing predicates, Boolean factors, and Boolean terms, saving operators and operands in a dictionary, which eventually becomes a nested dictionary.
+
+- `db_model.py`
+  - Uses a separate DB file to store and manage schema metadata (*Metadata schema*) and employs a *one DB-one schema* approach where a single DB file contains all records for one table. The reason for this is that `dbm` stores data in a key-value pair format within a single DB. When table keys and record keys are mixed within the same DB, inefficiencies can occur when trying to search for just one of them. Therefore, a `MetaDB` instance solely for managing metadata is continuously managed within the DBMS, and a new `DB` is created or opened for managing individual tables when necessary.
+  - The `MetaDB` class stores table names as keys and `Table` instances as values in a `dbm` store, while the `DB` class stores the primary key or a randomly generated UUID (if no primary key exists) as key and `Record` instance as value.
+  - Both `Table` and `Record` classes manage information about what tables or records they are referenced by and what columns or record values they are referencing. This allows quick integrity checks during operations like `DROP TABLE`, `INSERT`, `DELETE`.
+- `dbms.py`
+  - Manages a `MetaDB` instance continuously within one `DBMS` instance, fetching table metadata as needed. 
+  - Handles referential integrity during `INSERT` and `DELETE`
+  - Executes `SELECT` by taking cartesian products of records from the involved tables and filters them based on `WHERE` clauses.
+- `utils.py`
+  - Enables flexible handling of operators, irrespective of the number of operands.
+- `run.py`
+  - Reads and processes queries until an "exit" command is encountered.
+  - In case of syntax errors, it prints an error message and stops processing any remaining queries.
+
+
+---
+This project was done as part of Spring 2023 Database M1522.001800 course of Seoul National University.
