@@ -97,7 +97,7 @@ create_table_query : CREATE TABLE table_name table_element_list
 table_element_list : LP table_element ("," table_element)* RP
 table_element : column_definition
               | table_constraint_definition
-column_definition : column_name data_type [NOT NULL]
+column_definition : column_name data_type [NOT NULL] [PRIMARY KEY]
 table_constraint_definition : primary_key_constraint
                             | referential_constraint
 primary_key_constraint : PRIMARY KEY column_name_list
@@ -124,8 +124,8 @@ describe_query : DESCRIBE table_name
 desc_query : DESC table_name
 
 // INSERT
-insert_query : INSERT INTO table_name [column_name_list] VALUES value_list
-value_list : LP value ("," value)* RP
+insert_query : INSERT INTO table_name [column_name_list] VALUES value_tuple ("," value_tuple)*
+value_tuple : LP value ("," value)* RP
 value : INT | STR | DATE | NULL
 
 // DELETE

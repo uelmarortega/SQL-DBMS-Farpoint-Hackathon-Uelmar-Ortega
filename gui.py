@@ -230,83 +230,99 @@ with open('grammar.lark') as f:
     parser = Lark(f.read(), start='command', lexer='basic')
 
 def execute_sql(query):
-    """Execute SQL query and return result"""
+    """Execute SQL query and return result. Supports multiple queries separated by semicolons."""
     try:
         t = SQLTransformer()
         parsed = parser.parse(query)
         result = t.transform(parsed)
-        stmt, table, record, tables, sel_cols, where = result
         
-        if stmt == 'create table':
-            dbms.create_table(table)
-            return {'success': True, 'message': f"Table '{table['table_name']}' created", 'type': 'success'}
+        # Handle multiple queries (query_list) vs single query
+        queries = result if isinstance(result, list) else [result]
         
-        elif stmt == 'drop table':
-            dbms.drop_table(table['table_name'])
-            return {'success': True, 'message': f"Table '{table['table_name']}' dropped", 'type': 'success'}
+        last_result = None
+        for query_result in queries:
+            stmt, table, record, tables, sel_cols, where = query_result
+            last_result = process_single_query(stmt, table, record, tables, sel_cols, where)
         
-        elif stmt == 'insert':
-            dbms.insert(table, record)
-            return {'success': True, 'message': 'Row inserted', 'type': 'success'}
-        
-        elif stmt == 'update':
-            result = dbms.update(table['table_name'], table['assignments'], where)
-            return {'success': True, 'message': str(result), 'type': 'success'}
-        
-        elif stmt == 'delete':
-            deleted, skipped = dbms.delete(table['table_name'], where)
-            return {'success': True, 'message': f'{deleted} row(s) deleted', 'type': 'success'}
-        
-        elif stmt == 'select':
-            output = dbms.select(tables, sel_cols, where)
-            # Parse the table output into structured data
-            rows, columns = parse_select_output(output)
-            return {'success': True, 'type': 'select', 'columns': columns, 'rows': rows, 'raw': output}
-        
-        elif stmt == 'show tables':
-            output = dbms.show_tables()
-            tables_list = [t.strip() for t in output.strip().split('\n')[2:-1] if t.strip()]
-            return {'success': True, 'type': 'show_tables', 'tables': tables_list, 'raw': output}
-        
-        elif stmt == 'describe' or stmt == 'desc' or stmt == 'explain':
-            table_obj = dbms.explain_describe_desc(table['table_name'])
-            structure = {
-                'columns': table_obj.columns,
-                'not_null': list(table_obj.not_null_keys),
-                'primary_key': list(table_obj.primary_key) if table_obj.primary_key else [],
-                'foreign_keys': table_obj.foreign_keys
-            }
-            return {'success': True, 'type': 'describe', 'structure': structure, 'raw': str(structure)}
-        
-        elif stmt == 'create index':
-            result = dbms.create_index(table['table_name'], table['column_name'], table['index_name'])
-            return {'success': True, 'message': str(result), 'type': 'success'}
-        
-        elif stmt == 'drop index':
-            result = dbms.drop_index(table['index_name'])
-            return {'success': True, 'message': str(result), 'type': 'success'}
-        
-        elif stmt == 'show indexes':
-            result = dbms.show_indexes(table['table_name'])
-            return {'success': True, 'message': str(result), 'type': 'success'}
-        
-        elif stmt == 'begin':
-            result = dbms.begin_transaction()
-            return {'success': True, 'message': str(result), 'type': 'success'}
-        
-        elif stmt == 'commit':
-            result = dbms.commit_transaction()
-            return {'success': True, 'message': str(result), 'type': 'success'}
-        
-        elif stmt == 'rollback':
-            result = dbms.rollback_transaction()
-            return {'success': True, 'message': str(result), 'type': 'success'}
-        
-        else:
-            return {'success': False, 'error': f'Unknown statement: {stmt}', 'type': 'error'}
+        return last_result
     
     except Exception as e:
         return {'success': False, 'error': str(e), 'type': 'error'}
+
+def process_single_query(stmt, table, record, tables, sel_cols, where):
+    """Process a single parsed query and return result"""
+    if stmt == 'create table':
+        dbms.create_table(table)
+        return {'success': True, 'message': f"Table '{table['table_name']}' created", 'type': 'success'}
+    
+    elif stmt == 'drop table':
+        dbms.drop_table(table['table_name'])
+        return {'success': True, 'message': f"Table '{table['table_name']}' dropped", 'type': 'success'}
+    
+    elif stmt == 'insert':
+        dbms.insert(table, record)
+        return {'success': True, 'message': f"{len(record) if isinstance(record, list) else 1} row(s) inserted", 'type': 'success'}
+    
+    elif stmt == 'update':
+        result = dbms.update(table['table_name'], table['assignments'], where)
+        return {'success': True, 'message': str(result), 'type': 'success'}
+    
+    elif stmt == 'delete':
+        deleted, skipped = dbms.delete(table['table_name'], where)
+        return {'success': True, 'message': f'{deleted} row(s) deleted', 'type': 'success'}
+    
+    elif stmt == 'select':
+        output = dbms.select(tables, sel_cols, where)
+        # Parse the table output into structured data
+        rows, columns = parse_select_output(output)
+        return {'success': True, 'type': 'select', 'columns': columns, 'rows': rows, 'raw': output}
+    
+    elif stmt == 'show tables':
+        output = dbms.show_tables()
+        tables_list = [t.strip() for t in output.strip().split('\n')[2:-1] if t.strip()]
+        return {'success': True, 'type': 'show_tables', 'tables': tables_list, 'raw': output}
+    
+    elif stmt == 'describe' or stmt == 'desc' or stmt == 'explain':
+        table_obj = dbms.explain_describe_desc(table['table_name'])
+        structure = {
+            'columns': table_obj.columns,
+            'not_null': list(table_obj.not_null_keys),
+            'primary_key': list(table_obj.primary_key) if table_obj.primary_key else [],
+            'foreign_keys': table_obj.foreign_keys
+        }
+        return {'success': True, 'type': 'describe', 'structure': structure, 'raw': str(structure)}
+    
+    elif stmt == 'create index':
+        result = dbms.create_index(table['table_name'], table['column_name'], table['index_name'])
+        return {'success': True, 'message': str(result), 'type': 'success'}
+    
+    elif stmt == 'drop index':
+        result = dbms.drop_index(table['index_name'])
+        return {'success': True, 'message': str(result), 'type': 'success'}
+    
+    elif stmt == 'show indexes':
+        try:
+            result = dbms.show_indexes(table['table_name'])
+            return {'success': True, 'message': str(result), 'type': 'success'}
+        except KeyError as e:
+            return {'success': False, 'error': f"Missing key in table dict: {e}. table={table}", 'type': 'error'}
+        except Exception as e:
+            return {'success': False, 'error': f"show_indexes error: {e}. table={table}", 'type': 'error'}
+    
+    elif stmt == 'begin':
+        result = dbms.begin_transaction()
+        return {'success': True, 'message': str(result), 'type': 'success'}
+    
+    elif stmt == 'commit':
+        result = dbms.commit_transaction()
+        return {'success': True, 'message': str(result), 'type': 'success'}
+    
+    elif stmt == 'rollback':
+        result = dbms.rollback_transaction()
+        return {'success': True, 'message': str(result), 'type': 'success'}
+    
+    else:
+        return {'success': False, 'error': f'Unknown statement: {stmt}', 'type': 'error'}
 
 def parse_select_output(output):
     """Parse the ASCII table output into structured data"""

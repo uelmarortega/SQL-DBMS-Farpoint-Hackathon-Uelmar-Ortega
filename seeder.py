@@ -44,46 +44,54 @@ def create_parser():
         return Lark(f.read(), start='command', lexer='basic')
 
 def execute_sql(dbms, parser, query, silent=False):
-    """Execute SQL query and return result"""
+    """Execute SQL query and return result. Supports multiple queries."""
     t = SQLTransformer()
     try:
         parsed = parser.parse(query)
         result = t.transform(parsed)
-        stmt, table, record, tables, sel_cols, where = result
         
-        if stmt == 'create table':
-            dbms.create_table(table)
-            if not silent:
-                print(f"  ✅ Created table: {table['table_name']}")
-            return True
-        elif stmt == 'insert':
-            dbms.insert(table, record)
-            if not silent:
-                print(f"  ✅ Inserted row")
-            return True
-        elif stmt == 'create index':
-            dbms.create_index(table['table_name'], table['column_name'], table['index_name'])
-            if not silent:
-                print(f"  ✅ Created index: {table['index_name']}")
-            return True
-        elif stmt == 'select':
-            return dbms.select(tables, sel_cols, where)
-        elif stmt == 'show indexes':
-            return dbms.show_indexes(table['table_name'])
-        elif stmt == 'drop index':
-            dbms.drop_index(table['index_name'])
-            if not silent:
-                print(f"  ✅ Dropped index: {table['index_name']}")
-            return True
-        elif stmt == 'begin':
-            dbms.begin_transaction()
-            return True
-        elif stmt == 'commit':
-            dbms.commit_transaction()
-            return True
-        elif stmt == 'rollback':
-            dbms.rollback_transaction()
-            return True
+        # Handle multiple queries (query_list) vs single query
+        queries = result if isinstance(result, list) else [result]
+        
+        last_result = None
+        for query_result in queries:
+            stmt, table, record, tables, sel_cols, where = query_result
+            
+            if stmt == 'create table':
+                dbms.create_table(table)
+                if not silent:
+                    print(f"  ✅ Created table: {table['table_name']}")
+                last_result = True
+            elif stmt == 'insert':
+                dbms.insert(table, record)
+                if not silent:
+                    print(f"  ✅ Inserted row")
+                last_result = True
+            elif stmt == 'create index':
+                dbms.create_index(table['table_name'], table['column_name'], table['index_name'])
+                if not silent:
+                    print(f"  ✅ Created index: {table['index_name']}")
+                last_result = True
+            elif stmt == 'select':
+                last_result = dbms.select(tables, sel_cols, where)
+            elif stmt == 'show indexes':
+                last_result = dbms.show_indexes(table['table_name'])
+            elif stmt == 'drop index':
+                dbms.drop_index(table['index_name'])
+                if not silent:
+                    print(f"  ✅ Dropped index: {table['index_name']}")
+                last_result = True
+            elif stmt == 'begin':
+                dbms.begin_transaction()
+                last_result = True
+            elif stmt == 'commit':
+                dbms.commit_transaction()
+                last_result = True
+            elif stmt == 'rollback':
+                dbms.rollback_transaction()
+                last_result = True
+        
+        return last_result
     except Exception as e:
         if not silent:
             print(f"  ❌ Error: {e}")

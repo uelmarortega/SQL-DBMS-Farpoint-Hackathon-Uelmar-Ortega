@@ -18,18 +18,44 @@ class SQLTransformer(Transformer):
         self.tables = list()
         self.select_columns = list()  # [(table_name, column_name), ...)] or '*
         self.where = dict()  # [(table_name, column_name, operator, value), ...] up to 4 conditions
+    
+    def reset_state(self):
+        """Reset transformer state for processing a new query"""
+        self.statement = str()
+        self.table = {
+            "table_name": str(),
+            "column_list": list(),
+            "not_null_key_set": set(),
+            "primary_key_list": list(),
+            "foreign_key_dict": dict()
+        }
+        self.record = list()
+        self.tables = list()
+        self.select_columns = list()
+        self.where = dict()
         
     # assumes the parse tree transforms only one query at a time
     def command(self, items):
         if items[0] == "exit":
             self.statement = items[0]
+            return self.statement, self.table, self.record, self.tables, self.select_columns, self.where
+        
+        # If items[0] is a list, it's a query_list - return all queries
+        if isinstance(items[0], list):
+            return items[0]  # Return list of (stmt, table, record, tables, sel_cols, where) tuples
+        
+        # Single query
         return self.statement, self.table, self.record, self.tables, self.select_columns, self.where
     
     def query_list(self, items):
-        return items[0]
+        # Return all queries in the list as a list of tuples
+        # Each item is already a tuple of (stmt, table, record, tables, sel_cols, where) from the query method
+        return list(items)
     
     def query(self, items):
-        return items[0]
+        # Return the current state as a tuple for this query
+        # The individual query methods (create_table_query, insert_query, etc.) set the state
+        return self.statement, self.table, self.record, self.tables, self.select_columns, self.where
     
     # identifies the type of query and calls the corresponding function (name of node)
     def create_table_query(self, items):
@@ -50,9 +76,19 @@ class SQLTransformer(Transformer):
         column_name = items[0]
         data_type = items[1]  # int, char($num), date
         self.table["column_list"].append((column_name, data_type))
-        not_null_indicators = [keyword.lower() for keyword in items[-2:] if keyword is not None]  # allow uppercase null keyword
-        if not_null_indicators == ["not", "null"]:
-            self.table["not_null_key_set"].add(column_name)
+        
+        # Check for NOT NULL and PRIMARY KEY constraints (items[2:] may contain NOT, NULL, PRIMARY, KEY)
+        for i in range(2, len(items)):
+            if items[i] is not None:
+                keyword = items[i].value.lower() if hasattr(items[i], 'value') else str(items[i]).lower()
+                if keyword == "null" and i > 2 and items[i-1] is not None:
+                    prev_keyword = items[i-1].value.lower() if hasattr(items[i-1], 'value') else str(items[i-1]).lower()
+                    if prev_keyword == "not":
+                        self.table["not_null_key_set"].add(column_name)
+                elif keyword == "key" and i > 2 and items[i-1] is not None:
+                    prev_keyword = items[i-1].value.lower() if hasattr(items[i-1], 'value') else str(items[i-1]).lower()
+                    if prev_keyword == "primary":
+                        self.table["primary_key_list"].append((column_name,))
         return items
         
     def column_name(self, items) -> str:
@@ -114,10 +150,12 @@ class SQLTransformer(Transformer):
             "table_name": items[2],
             "column_name_list": items[3],
         }
-        self.record = items[5]
+        # items[5] is now the first value_tuple, items[6:] are additional tuples from multi-row insert
+        self.record = [items[5]] + list(items[6:]) if len(items) > 6 else [items[5]]
         return items
     
-    def value_list(self, items):
+    def value_tuple(self, items):
+        # Return the list of values in this tuple
         return [item for item in items if item != '(' and item != ')']
     
     def value(self, items):

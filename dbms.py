@@ -146,9 +146,10 @@ class DBMS:
         return output
     
     
-    def insert(self, table_dict: dict, value_list: list):
+    def insert(self, table_dict: dict, records_list: list):
+        """Insert one or multiple records. records_list is a list of value tuples."""
         table_name = table_dict["table_name"]
-        column_name_list = table_dict["column_name_list"]
+        column_name_list = table_dict.get("column_name_list")
         
         self.meta_db.open_db()
         table_key = self.meta_db.create_key_from_value(table_name)
@@ -157,75 +158,80 @@ class DBMS:
             raise NoSuchTable()
         self.meta_db.close_db()
         
-        if column_name_list:
-            if len(column_name_list) != len(value_list):
+        # Ensure records_list is a list of records
+        if records_list and not isinstance(records_list[0], list):
+            records_list = [records_list]
+        
+        for value_list in records_list:
+            if column_name_list:
+                if len(column_name_list) != len(value_list):
+                    raise InsertTypeMismatchError()
+                for column_name in column_name_list:
+                    if column_name not in table:
+                        raise InsertColumnExistenceError(column_name)
+                    
+            if len(table.columns.keys()) != len(value_list):
                 raise InsertTypeMismatchError()
-            for column_name in column_name_list:
-                if column_name not in table:
-                    raise InsertColumnExistenceError(column_name)
             
-        if len(table.columns.keys()) != len(value_list):
-            raise InsertTypeMismatchError()
-        
-        for column_name, value in zip(table.columns.keys(), value_list):
-            if value is None and column_name in table.not_null_keys:
-                raise InsertColumnNonNullableError(column_name)
-        
-        if not all([is_valid_type(data_type, value) for data_type, value in zip(table.columns.values(), value_list)]):
-            raise InsertTypeMismatchError()
-        
-        data = {}
-        primary_value = []
-        referencing = dict()
-        for (column_name, data_type), value in zip(table.columns.items(), value_list):
-            if data_type.startswith("char") and value is not None:
-                max_len = eval_char_max_len(data_type)
-                value = value[:max_len]
-            if table.primary_key and column_name in table.primary_key:  # may be composite primary key
-                primary_value.append(value)
-            if table.foreign_keys and column_name in table.foreign_keys:  # one foreign key per column
-                referenced_table_name, referenced_column_name = table.foreign_keys[column_name]
-                # get referenced table schema
-                self.meta_db.open_db()
-                referenced_table_key = self.meta_db.create_key_from_value(referenced_table_name)
-                referenced_table = self.meta_db.get(referenced_table_key)
-                self.meta_db.close_db()
-                # get referenced record
-                referenced_table_db = DB(referenced_table_name)
-                referenced_table_db.open_db()
-                referenced_key = referenced_table_db.create_key_from_value((value,))
-                referenced_record = None
-                if len(referenced_table.primary_key) == 1:
-                    referenced_record = referenced_table_db.get(referenced_key)
-                else:  # composite primary key
-                    all_primary_values = referenced_table_db.keys()
-                    for primary_value in all_primary_values:
-                        if referenced_key.decode() in primary_value.decode():
-                            referenced_record = referenced_table_db.get(primary_value)
-                            break
-                if referenced_record is None:
-                    raise InsertReferentialIntegrityError()
-                referencing[(referenced_table_name, referenced_column_name)] = {referenced_record.data[referenced_column_name]}
-                assert referenced_record.data[referenced_column_name] == value
-                referenced_record.add_to_referenced_by(table_name, column_name, value)
-                referenced_table_db.put(referenced_key, referenced_record)
-                referenced_table_db.close_db()
-            data[column_name] = value
-        primary_value = tuple(primary_value) if primary_value else None
-        record = Record(table_name, data, primary_value, referencing)
-        
-        table_db = DB(table_name)
-        table_db.open_db()
-        record_key = table_db.create_key_from_value(primary_value) if primary_value else table_db.create_random_key()
-        if table_db.exists(record_key):
+            for column_name, value in zip(table.columns.keys(), value_list):
+                if value is None and column_name in table.not_null_keys:
+                    raise InsertColumnNonNullableError(column_name)
+            
+            if not all([is_valid_type(data_type, value) for data_type, value in zip(table.columns.values(), value_list)]):
+                raise InsertTypeMismatchError()
+            
+            data = {}
+            primary_value = []
+            referencing = dict()
+            for (column_name, data_type), value in zip(table.columns.items(), value_list):
+                if data_type.startswith("char") and value is not None:
+                    max_len = eval_char_max_len(data_type)
+                    value = value[:max_len]
+                if table.primary_key and column_name in table.primary_key:  # may be composite primary key
+                    primary_value.append(value)
+                if table.foreign_keys and column_name in table.foreign_keys:  # one foreign key per column
+                    referenced_table_name, referenced_column_name = table.foreign_keys[column_name]
+                    # get referenced table schema
+                    self.meta_db.open_db()
+                    referenced_table_key = self.meta_db.create_key_from_value(referenced_table_name)
+                    referenced_table = self.meta_db.get(referenced_table_key)
+                    self.meta_db.close_db()
+                    # get referenced record
+                    referenced_table_db = DB(referenced_table_name)
+                    referenced_table_db.open_db()
+                    referenced_key = referenced_table_db.create_key_from_value((value,))
+                    referenced_record = None
+                    if len(referenced_table.primary_key) == 1:
+                        referenced_record = referenced_table_db.get(referenced_key)
+                    else:  # composite primary key
+                        all_primary_values = referenced_table_db.keys()
+                        for primary_value in all_primary_values:
+                            if referenced_key.decode() in primary_value.decode():
+                                referenced_record = referenced_table_db.get(primary_value)
+                                break
+                    if referenced_record is None:
+                        raise InsertReferentialIntegrityError()
+                    referencing[(referenced_table_name, referenced_column_name)] = {referenced_record.data[referenced_column_name]}
+                    assert referenced_record.data[referenced_column_name] == value
+                    referenced_record.add_to_referenced_by(table_name, column_name, value)
+                    referenced_table_db.put(referenced_key, referenced_record)
+                    referenced_table_db.close_db()
+                data[column_name] = value
+            primary_value = tuple(primary_value) if primary_value else None
+            record = Record(table_name, data, primary_value, referencing)
+            
+            table_db = DB(table_name)
+            table_db.open_db()
+            record_key = table_db.create_key_from_value(primary_value) if primary_value else table_db.create_random_key()
+            if table_db.exists(record_key):
+                table_db.close_db()
+                raise InsertDuplicatePrimaryKeyError()
+            
+            # Log for rollback
+            self._log_change("INSERT", table_name, record_key, None)
+            
+            table_db.put(record_key, record)
             table_db.close_db()
-            raise InsertDuplicatePrimaryKeyError()
-        
-        # Log for rollback
-        self._log_change("INSERT", table_name, record_key, None)
-        
-        table_db.put(record_key, record)
-        table_db.close_db()
         
         return InsertResult()
 
