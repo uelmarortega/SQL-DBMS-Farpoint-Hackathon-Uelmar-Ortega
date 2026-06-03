@@ -118,14 +118,21 @@ class IndexManager:
         if meta_file.exists():
             import pickle
             with open(meta_file, 'rb') as f:
-                self.indexes = pickle.load(f)
+                meta_dict = pickle.load(f)
+                # Reconstruct Index objects from metadata
+                for key, meta in meta_dict.items():
+                    self.indexes[key] = Index(
+                        table_name=meta['table_name'],
+                        column_name=meta['column_name'],
+                        index_name=meta.get('index_name')
+                    )
     
     def _save_meta(self):
         """Save index metadata"""
         import pickle
         meta_file = self.index_dir / "index_meta.pkl"
         with open(meta_file, 'wb') as f:
-            pickle.dump({k: {'table_name': v.table_name, 'column_name': v.column_name} 
+            pickle.dump({k: {'table_name': v.table_name, 'column_name': v.column_name, 'index_name': v.index_name}
                         for k, v in self.indexes.items()}, f)
     
     def create_index(self, table_name: str, column_name: str, records: List[Tuple[Any, Any]], index_name: str = None):
