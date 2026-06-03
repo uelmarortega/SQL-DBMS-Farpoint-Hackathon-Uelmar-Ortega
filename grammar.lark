@@ -97,7 +97,9 @@ create_table_query : CREATE TABLE table_name table_element_list
 table_element_list : LP table_element ("," table_element)* RP
 table_element : column_definition
               | table_constraint_definition
-column_definition : column_name data_type [NOT NULL] [PRIMARY KEY]
+column_definition : column_name data_type column_constraint*
+column_constraint : NOT NULL
+                  | PRIMARY KEY
 table_constraint_definition : primary_key_constraint
                             | referential_constraint
 primary_key_constraint : PRIMARY KEY column_name_list
